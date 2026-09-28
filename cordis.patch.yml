@@ -1,0 +1,7 @@
+# dsh-leng-team bundle patch: inserts the host row into the profile's plugin
+# roster. Install with `dsh plugin --profile <name> add <path-or-git-url>`; the
+# bundle patch is applied automatically, so do NOT insert this row again in the
+# profile patch (duplicate ids crash the loader).
+- insert:
+    - id: dsh-leng-team
+      name: 'dsh-leng-team'

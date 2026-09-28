@@ -1,0 +1,16 @@
+# 运行时与本机专属文件（不上传）
+node.exe
+node_modules/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# 插件运行快照与持久化配置（含本机会话/路径信息）
+snapshot-*.json
+dsh-leng-team.json
+*.bak
+
+# 编辑器
+.vscode/
+.idea/
