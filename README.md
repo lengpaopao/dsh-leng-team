@@ -65,6 +65,59 @@ web profile 的 cordis/dsh 运行时与 headless 不同，本插件已按 web �
 | agent 事件 | 用 `ctx.on('agent/status' | 'agent/request-error', ({agent,status,error})=>…)`（cordis 事件风格、单 payload 对象），不用 `ctx.agents.on`。 |
 | 不依赖的服务 | `slots`、`expose` 在 web 服务端上下文不可用（会导致 `pending` 或 `without inject`），本插件不注入/不使用。 |
 
+## 排障 / Troubleshooting
+
+### 1. web 访问提示 "dsh web authentication required; reopen the URL printed by dsh web"（401）
+
+dsh web 的认证机制（源码级结论，见 `@deepseek-ai/dsh-client-connection`）：
+
+- 启动时 web 进程持有 **launchToken**，打印的访问 URL 形如 `http://127.0.0.1:3080/?token=<launchToken>`。
+- 首次访问：仅当请求满足 **GET + 路径 `/` + 且仅一个 token 参数 + 带 Host 头 + token 与 launchToken 严格相等**（恒定时间字节比较）时，服务端 303 重定向到 `./` 并 `Set-Cookie` 一个**签名会话 cookie**（绑定 authority、HttpOnly、SameSite=Strict、带过期时间）。
+- 后续访问：凭该 cookie 通过（`isAuthenticated`），无需再带 token。
+- 任一条件不满足 → 一律 401。
+
+常见 401 原因与处理：
+
+| 原因 | 现象 | 处理 |
+| --- | --- | --- |
+| **URL token 与当前实例 launchToken 不一致**（最常见：日志 URL 来自旧实例/守护残留；或有多个 web 进程抢 3080） | 复制日志 URL 仍 401 | 完全停止监听 3080/8787 的 node 进程 → 重新 `dsh web --no-open` → 等 12-15s → **以最新 `web_start.log` 的 URL 为准**原样打开 |
+| 请求缺 Host 头（裸 IP/代理/某些 curl 场景） | HTTP 直连 401 | 确保请求带 `Host: 127.0.0.1:3080` |
+| 浏览器残留旧 cookie（端口/域名变化后 authority 不匹配） | 换 URL 后仍 401 | 清除该站点 cookie 后重开 URL |
+| token 已过期/被轮换 | 之前能用、现在 401 | 重启 web 取最新 URL |
+
+排查步骤：
+
+```powershell
+# 1) 确认 3080 监听与进程
+Get-NetTCPConnection -LocalPort 3080 -State Listen
+# 2) 杀掉占用（含 8787）
+Get-NetTCPConnection -LocalPort 3080,8787 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }
+# 3) 重启并取最新 URL（token 以本次日志为准）
+Start-Process -FilePath dsh.cmd -ArgumentList 'web','--no-open'
+Start-Sleep -Seconds 15
+Get-Content "$env:USERPROFILE\.dsh\web_start.log" -Encoding UTF8 | Select-String 'dsh web:'
+```
+
+> 提示：web GUI 仅用于 `/team selftest`、专家设置页与流程图。插件的功能健康度不依赖 GUI——本仓库断言基线（204 项）与冒烟测试直接在安装副本上运行，均可独立验证。
+
+### 2. 插件改动后不生效
+
+- 改动 `lib/` 或 `client/` 源码后，**必须同步到安装副本**并重启 web。推荐一键脚本（V2026092903 起提供）：
+
+```bash
+# 在【源码仓库】目录运行（安装副本不含 scripts/，不要在副本里跑）
+npm run sync-web          # 同步源码→副本 + 双份默认值一致性校验 + SHA256 校验
+npm run sync-web -- --restart   # 同步后自动重启 dsh web
+```
+
+- 忘了同步的典型症状：`/team version` 的 release 仍是旧值、`/team selftest` 新增检查项不出现。
+
+### 3. 端口被占用 / 插件重复加载
+
+- `3080` 为 web 主端口，`8787` 为辅助端口；多实例会互相抢端口，导致日志 URL 与请求目标不一致（见第 1 节）。
+- 确认 bundles 注册唯一：web profile `package.json` 的 `dsh.profile.bundles` 中 `dsh-leng-team` 只出现一次。
+
 ## Known Limitations
 
 - software 模板为研发流水线主链；data_analysis / research / content 走领域化流水线，强叙事创作（小说、剧本）不在内置模板范围。

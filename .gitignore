@@ -14,3 +14,6 @@ dsh-leng-team.json
 # 编辑器
 .vscode/
 .idea/
+
+# Release 源码包（已上传 GitHub Release，不入库）
+*.tar.gz
