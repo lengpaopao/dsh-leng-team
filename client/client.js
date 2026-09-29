@@ -567,8 +567,11 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
             const isDone = n.state === "done";
             const isCurrent = n.state === "current";
             const isErr = n.state === "error" || n.state === "blocked";
-            const topo = FLOW_TOPOLOGY.find((t) => t.id === n.id) || { name: n.id, desc: "" };
-            const back = topo.back;
+            // 修复 R8：FLOW_TOPOLOGY 已按上方 :520 注释所述删除，但此处仍在引用它 →
+            // 只要有任意节点就抛 ReferenceError，整块「专家流程图」渲染失败。
+            // 改为完全依赖服务端 dagScene() 下发的 name/desc/back。
+            const topo = { name: n.name || n.id, desc: n.desc || "" };
+            const back = Array.isArray(n.back) ? n.back : null;
             return React.createElement("div", { key: n.id, style: { marginBottom: 6 } },
               React.createElement("div", { style: { display: "flex", alignItems: "stretch", gap: 8 } },
                 React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", width: 40, flex: "0 0 40px" } },
@@ -725,9 +728,13 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
           dbg("[dsh-leng-team] flow fetch err", String(e && e.message ? e.message : e));
           // degrade: return the full pipeline topology with pending states so the
           // user always sees the whole N0-N41 flow (and watchdog lane).
+          // degrade: 静态拓扑（FLOW_TOPOLOGY）已删除，无法再伪造整套节点。
+          // 修复 R8：原实现 nodes: FLOW_TOPOLOGY.map(... state:"pending" ...) 既会抛 ReferenceError，
+          // 又正是「整块流程图全显示待处理」这一假象的来源。改为返回空列表，
+          // 由 FlowChartView 显示「等待流水线状态…」，不再制造不存在的待处理节点。
           return {
             goal: "", stage: "idle", running: false, at: Date.now(),
-            nodes: FLOW_TOPOLOGY.map((t) => ({ id: t.id, name: t.name, desc: t.desc, state: "pending", note: "" })),
+            nodes: [],
             watchdog: { id: "W", name: "看门狗旁路", desc: "每 4 分钟全局轮询：死循环 / 429 / 僵尸会话 / 席位回收 / 异常告警", state: "idle", note: "" },
           };
         }
