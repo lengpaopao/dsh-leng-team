@@ -103,7 +103,7 @@ Get-Content "$env:USERPROFILE\.dsh\web_start.log" -Encoding UTF8 | Select-String
 
 ### 2. 插件改动后不生效
 
-- 改动 `lib/` 或 `client/` 源码后，**必须同步到安装副本**并重启 web。推荐一键脚本（V2026092903 起提供）：
+- 改动 `lib/` 或 `client/` 源码后，**必须同步到安装副本**并重启 web。推荐一键脚本（V2026092904 起提供）：
 
 ```bash
 # 在【源码仓库】目录运行（安装副本不含 scripts/，不要在副本里跑）
