@@ -92,9 +92,9 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     ]},
     { title: "流程控制", fields: [
       { key: "flow.manualConfirm.requirement", type: "toggle", label: "需求定稿人工确认" },
-      { key: "flow.manualConfirm.architecture", type: "toggle", label: "架构定稿人工确认" },
-      { key: "flow.manualConfirm.ui", type: "toggle", label: "UI 定稿人工确认" },
-      { key: "flow.manualConfirm.final", type: "toggle", label: "最终交付人工确认" },
+      { key: "flow.manualConfirm.architecture", type: "toggle", label: "架构定稿人工确认", hint: "默认自动通过（可在专家设置开启人工确认）" },
+      { key: "flow.manualConfirm.ui", type: "toggle", label: "UI 定稿人工确认", hint: "默认自动通过（可在专家设置开启人工确认）" },
+      { key: "flow.manualConfirm.final", type: "toggle", label: "最终交付人工确认", hint: "默认自动通过（可在专家设置开启人工确认）" },
       { key: "flow.autoConfirm", type: "toggle", label: "测试模式（需确认环节默认通过并标注）", hint: "默认关闭=正式模式（等待 /team confirm <key> 人工拍板，交付不混入测试模式）；开启=测试时默认通过并标注「需确认」。" },
       { key: "flow.confirmTimeoutMs", type: "number", label: "确认等待超时（毫秒）", min: 10000, max: 3600000, hint: "默认 300000 = 5 分钟。" },
       { key: "flow.maxRework", type: "number", label: "最大返工次数", min: 1, max: 10 },
@@ -310,7 +310,7 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     concurrency: { maxConcurrent: 5, queueStrategy: "fifo", queueTimeoutMs: 600000, priorityEnabled: true, keyPathReserve: true, reservedSeats: 1, rps: 8, burst: 100, platformCap: 5, rpm: 240, backoffMs: 3000, degradeThreshold: 3, degradeStrategy: "progressive", globalPauseOn429: true },
     watchdog: { enabled: true, intervalMs: 240000, similarityThreshold: 0.85, repeatRounds: 6, maxRetries429: 3, backoffMs: 3000, freezeQueueOn429: true, zombieIdleMs: 300000, action: "pause" },
     moduleSplit: { enabled: true, parsePrompt: "", mergePrompt: "", aggregateThreshold: 8, cacheEnabled: true, reuseTemplates: true },
-    flow: { manualConfirm: { requirement: true, architecture: true, ui: true, final: true }, autoConfirm: false, confirmTimeoutMs: 300000, maxRework: 3, requirementChangePolicy: "routeBack", summaryTokenCap: 4000 },
+    flow: { manualConfirm: { requirement: true, architecture: false, ui: false, final: false }, autoConfirm: false, confirmTimeoutMs: 300000, maxRework: 3, requirementChangePolicy: "routeBack", summaryTokenCap: 4000 },
     models: Object.fromEntries(ALL_ROLES_KEYS.map(([key]) => [key, { provider: DEFAULT_ROLE_MODEL.provider, model: DEFAULT_ROLE_MODEL.model }])),
     roles: {
       product:   { personaCore: "你是专业资深产品经理，隶属于 dsh-leng-team 研发团队。你严格遵守团队角色边界，只负责产品需求梳理、产品规则定义、需求优先级管理、验收标准制定。禁止参与架构、开发、测试、设计、文档工作。你的工作输入为用户原始诉求，你的工作目标是把模糊需求转化为结构化、可落地、可验收的产品需求规范。你需要梳理业务场景、用户角色、操作路径、核心功能、非功能诉求、需求禁忌。你需要区分刚需与优化项，排出功能优先级，输出清晰的产品需求文档与验收标准。所有输出必须结构化、条理清晰、无歧义。你不擅自扩展功能，不擅自删减用户诉求，遇到模糊点整理疑问等待用户确认。工作完成后规范交付产物，等待下一环节流转。" },
