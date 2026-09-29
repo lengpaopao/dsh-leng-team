@@ -100,6 +100,15 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
       { key: "flow.maxRework", type: "number", label: "最大返工次数", min: 1, max: 10 },
       { key: "flow.requirementChangePolicy", type: "select", label: "需求变更策略", options: ["block", "routeBack"], hint: "block=阻止开发阶段改需求；routeBack=回退需求分析节点。" },
       { key: "flow.summaryTokenCap", type: "number", label: "摘要压缩 Token 上限", min: 500, max: 20000 },
+      { key: "flow.devTimeoutMs", type: "number", label: "单角色开发超时（毫秒）", min: 60000, max: 7200000, hint: "默认 1800000 = 30 分钟。" },
+      { key: "flow.taskTimeoutMs", type: "number", label: "单任务执行超时（毫秒）", min: 30000, max: 3600000, hint: "默认 300000 = 5 分钟。" },
+      { key: "flow.conditionalTimeoutMs", type: "number", label: "有条件合格确认超时（毫秒）", min: 60000, max: 3600000, hint: "默认 300000；超时按「不合格」处理并回退。" },
+      { key: "flow.gateWaitMs", type: "number", label: "P0 门禁阻断等待上限（毫秒）", min: 60000, max: 3600000, hint: "默认 300000；超过后解除暂停并以 RECOVER 态继续。" },
+    ]},
+    { title: "模型护栏", fields: [
+      { key: "modelGuard.enabled", type: "toggle", label: "启用模型护栏", hint: "父会话命中挂起上游时自动切换备用模型，避免子代理全部空输出。" },
+      { key: "modelGuard.fallbackProvider", type: "text", label: "备用 Provider", hint: "默认 freehub-deepseek-v4-flash-glm5-2-3。" },
+      { key: "modelGuard.fallbackModel", type: "text", label: "备用模型", hint: "默认 glm-5.2。" },
     ]},
     { title: "角色模型覆盖（14 核心 + 21 条件角色，独立指定）", fields: ALL_ROLES_KEYS.flatMap(([key, label]) => [
       { key: "models." + key + ".provider", type: "text", label: label + " · 提供方", hint: "留空=继承父会话" },
@@ -310,7 +319,8 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     concurrency: { maxConcurrent: 5, queueStrategy: "fifo", queueTimeoutMs: 600000, priorityEnabled: true, keyPathReserve: true, reservedSeats: 1, rps: 8, burst: 100, platformCap: 5, rpm: 240, backoffMs: 3000, degradeThreshold: 3, degradeStrategy: "progressive", globalPauseOn429: true },
     watchdog: { enabled: true, intervalMs: 240000, similarityThreshold: 0.85, repeatRounds: 6, maxRetries429: 3, backoffMs: 3000, freezeQueueOn429: true, zombieIdleMs: 300000, action: "pause" },
     moduleSplit: { enabled: true, parsePrompt: "", mergePrompt: "", aggregateThreshold: 8, cacheEnabled: true, reuseTemplates: true },
-    flow: { manualConfirm: { requirement: true, architecture: false, ui: false, final: false }, autoConfirm: false, confirmTimeoutMs: 300000, maxRework: 3, requirementChangePolicy: "routeBack", summaryTokenCap: 4000 },
+    flow: { manualConfirm: { requirement: true, architecture: false, ui: false, final: false }, autoConfirm: false, confirmTimeoutMs: 300000, maxRework: 3, requirementChangePolicy: "routeBack", summaryTokenCap: 4000, devTimeoutMs: 1800000, taskTimeoutMs: 300000, conditionalTimeoutMs: 300000, gateWaitMs: 300000, manualConfirmDefaults: { requirement: true, architecture: false, ui: false, final: false } },
+    modelGuard: { enabled: true, hangingUpstreams: ["280b", "dots3-note-prev", "note3-prev"], fallbackProvider: "freehub-deepseek-v4-flash-glm5-2-3", fallbackModel: "glm-5.2" },
     models: Object.fromEntries(ALL_ROLES_KEYS.map(([key]) => [key, { provider: DEFAULT_ROLE_MODEL.provider, model: DEFAULT_ROLE_MODEL.model }])),
     roles: {
       product:   { personaCore: "你是专业资深产品经理，隶属于 dsh-leng-team 研发团队。你严格遵守团队角色边界，只负责产品需求梳理、产品规则定义、需求优先级管理、验收标准制定。禁止参与架构、开发、测试、设计、文档工作。你的工作输入为用户原始诉求，你的工作目标是把模糊需求转化为结构化、可落地、可验收的产品需求规范。你需要梳理业务场景、用户角色、操作路径、核心功能、非功能诉求、需求禁忌。你需要区分刚需与优化项，排出功能优先级，输出清晰的产品需求文档与验收标准。所有输出必须结构化、条理清晰、无歧义。你不擅自扩展功能，不擅自删减用户诉求，遇到模糊点整理疑问等待用户确认。工作完成后规范交付产物，等待下一环节流转。" },
