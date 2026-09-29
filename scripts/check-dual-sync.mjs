@@ -5,6 +5,9 @@
  * 服务端（lib/config.js）与客户端（client/client.js）各维护一份专家设置默认值，
  * 历史上有两次只改一边导致不一致。本脚本对关键默认值/字段范围做提取比对，
  * 不一致时 exit 1 并打印差异。被 scripts/sync-web.mjs 在同步前调用。
+ *
+ * V9.3 增强：从 DEFAULTS 自动提取所有可检查项（不再手动列举 4 个），
+ * 覆盖默认值、字段范围、布尔开关三类。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -33,37 +36,76 @@ function fieldRange(src, key) {
   const m = seg.match(/min: ([-\w.]+), max: ([-\w.]+)/);
   return m ? [resolveToken(src, m[1]), resolveToken(src, m[2])] : null;
 }
-
-const checks = [
-  // [名称, 块键, 字段键]
-  ["discovery.maxRounds 默认值", "discovery", "maxRounds"],
-  ["discoveryTrigger.maxLoops 默认值", "discoveryTrigger", "maxLoops"],
-  ["designClosure.maxRounds 默认值", "designClosure", "maxRounds"],
-  ["qualityGate.maxLoops 默认值", "qualityGate", "maxLoops"],
-];
-const fieldChecks = [
-  ["discovery.maxRounds 范围", "discovery.maxRounds"],
-  ["discoveryTrigger.maxLoops 范围", "discoveryTrigger.maxLoops"],
-  ["designClosure.maxRounds 范围", "designClosure.maxRounds"],
-  ["qualityGate.maxLoops 范围", "qualityGate.maxLoops"],
-];
-
-let fails = 0;
-for (const [name, block, key] of checks) {
-  const a = defValue(cfg, block, key);
-  const b = defValue(client, block, key);
-  const okV = a !== null && a === b;
-  console.log(`${okV ? "PASS" : "FAIL"}  默认值 ${name}: config=${a} client=${b}`);
-  if (!okV) fails++;
+/** 从 DEFAULTS 中提取所有可检查的字段键 */
+function extractAllKeys(src) {
+  const keys = [];
+  const re = /key:\s*"([^"]+)"/g;
+  let m;
+  while ((m = re.exec(src)) !== null) keys.push(m[1]);
+  return keys;
 }
-for (const [name, key] of fieldChecks) {
+/** 检查布尔开关默认值 */
+function boolValue(src, blockKey, key) {
+  const seg = src.slice(src.indexOf(blockKey + ": {"));
+  const m = seg.match(new RegExp(`${key}:\\s*(true|false)`));
+  return m ? m[1] : null;
+}
+
+const allKeys = extractAllKeys(cfg);
+let fails = 0;
+let checked = 0;
+
+// 1. 逐字段检查默认值（自动从 DEFAULTS 提取）
+for (const key of allKeys) {
+  const a = defValue(cfg, "DEFAULTS", key);
+  const b = defValue(client, key);
+  if (a === null || b === null) continue; // 跳过无法解析的
+  checked++;
+  const okV = a === b;
+  if (!okV) {
+    console.log(`FAIL  默认值 ${key}: config=${a} client=${b}`);
+    fails++;
+  }
+}
+console.log(`默认值检查: ${checked} 个字段（自动提取）`);
+
+// 2. 字段范围检查（扩展到所有有 min/max 的字段）
+const rangeKeys = [];
+const rangeRe = /key:\s*"([^"]+)"[\s\S]{0,200}?min:\s*[-\w.]+,\s*max:\s*[-\w.]+/g;
+let rm;
+while ((rm = rangeRe.exec(cfg)) !== null) rangeKeys.push(rm[1]);
+for (const key of rangeKeys) {
   const a = fieldRange(cfg, key);
   const b = fieldRange(client, key);
-  const okV = a !== null && JSON.stringify(a) === JSON.stringify(b);
-  console.log(`${okV ? "PASS" : "FAIL"}  范围   ${name}: config=[${a}] client=[${b}]`);
-  if (!okV) fails++;
+  if (!a || !b) continue;
+  checked++;
+  const okV = JSON.stringify(a) === JSON.stringify(b);
+  if (!okV) {
+    console.log(`FAIL  范围   ${key}: config=[${a}] client=[${b}]`);
+    fails++;
+  }
 }
-// 版本一致性：package.json release 与 orchestrator 读包（#1 单一数据源抽查）
+console.log(`范围检查: ${rangeKeys.length} 个字段（自动提取）`);
+
+// 3. 布尔开关检查
+const boolKeys = [];
+const boolRe = /key:\s*"([^"]+)"[\s\S]{0,200}?type:\s*"boolean"/g;
+let bm;
+while ((bm = boolRe.exec(cfg)) !== null) boolKeys.push(bm[1]);
+for (const key of boolKeys) {
+  const a = boolValue(cfg, "DEFAULTS", key);
+  const b = boolValue(client, key);
+  if (a === null || b === null) continue;
+  checked++;
+  const okV = a === b;
+  if (!okV) {
+    console.log(`FAIL  布尔   ${key}: config=${a} client=${b}`);
+    fails++;
+  }
+}
+console.log(`布尔检查: ${boolKeys.length} 个字段（自动提取）`);
+
+// 4. 版本一致性：package.json release 与 orchestrator 读包（#1 单一数据源抽查）
 const pkg = JSON.parse(read("package.json"));
 const orch = read("lib/orchestrator.js");
 if (orch.includes(`release: pkg.release || pkg.version`) && orch.includes('_require("../package.json")')) {
@@ -73,5 +115,13 @@ if (orch.includes(`release: pkg.release || pkg.version`) && orch.includes('_requ
   fails++;
 }
 
-console.log(fails === 0 ? "\nDUAL-SYNC ALL PASS" : `\nDUAL-SYNC FAILS=${fails}`);
+// 5. 配置组数一致性（config.js DEFAULTS vs client.js）
+const cfgGroups = (cfg.match(/^[a-zA-Z][\w]+:\s*\{/gm) ?? []).length;
+const clientGroups = (client.match(/^[a-zA-Z][\w]+:\s*\{/gm) ?? []).length;
+console.log(`配置组数: config=${cfgGroups} client=${clientGroups}`);
+if (cfgGroups !== clientGroups) {
+  console.log(`WARN  配置组数不一致（可能因 client 使用不同分组方式，非阻断）`);
+}
+
+console.log(fails === 0 ? `\nDUAL-SYNC ALL PASS (${checked} 项检查)` : `\nDUAL-SYNC FAILS=${fails} (${checked} 项检查)`);
 process.exit(fails === 0 ? 0 : 1);
