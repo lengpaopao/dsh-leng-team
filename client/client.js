@@ -104,6 +104,7 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
       { key: "flow.taskTimeoutMs", type: "number", label: "单任务执行超时（毫秒）", min: 30000, max: 3600000, hint: "默认 300000 = 5 分钟。" },
       { key: "flow.conditionalTimeoutMs", type: "number", label: "有条件合格确认超时（毫秒）", min: 60000, max: 3600000, hint: "默认 300000；超时按「不合格」处理并回退。" },
       { key: "flow.gateWaitMs", type: "number", label: "P0 门禁阻断等待上限（毫秒）", min: 60000, max: 3600000, hint: "默认 300000；超过后解除暂停并以 RECOVER 态继续。" },
+      { key: "flow.stageReuse", type: "toggle", label: "断点续跑复用已完成阶段", hint: "默认开启：快照恢复后，崩溃前已完成且产物合法的阶段直接复用、不再调用 Agent；崩溃瞬间正在执行的那个阶段必然重跑。关闭=恢复后从第一阶段全量重跑（排查用）。" },
     ]},
     { title: "模型护栏", fields: [
       { key: "modelGuard.enabled", type: "toggle", label: "启用模型护栏", hint: "父会话命中挂起上游时自动切换备用模型，避免子代理全部空输出。" },
@@ -145,7 +146,6 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     { title: "角色边界", fields: [
       { key: "roleBoundary.forceNonResponsibilities", type: "toggle", label: "强制声明「不负责什么」", hint: "每个角色 systemPrompt 必须包含负责/不负责边界。" },
       { key: "roleBoundary.crossRoleReport", type: "toggle", label: "越权处理", hint: "发现越权请求拒绝执行并写入问题池 P2。" },
-      { key: "roleBoundary.conflictEscalation", type: "toggle", label: "职责冲突上报", hint: "相邻角色职责冲突上报总指挥，进入问题池 P2。" },
     ]},
     { title: "缓存键完整化", fields: [
       { key: "cacheKey.includeConditionalVersions", type: "toggle", label: "条件角色产物版本单列", hint: "每个条件角色产物版本独立进缓存键。" },
@@ -160,10 +160,7 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
       { key: "observability.exportJson", type: "toggle", label: "支持导出 JSON" },
     ]},
     { title: "成本控制", fields: [
-      { key: "cost.summaryIndex", type: "toggle", label: "摘要 + 产物索引" },
-      { key: "cost.moduleCache", type: "toggle", label: "模块级缓存" },
-      { key: "cost.reuseModules", type: "toggle", label: "重复模块复用" },
-      { key: "cost.tieredModels", type: "toggle", label: "按角色分级模型" },
+      { key: "cost.reuseModules", type: "toggle", label: "重复模块复用（模块级缓存开关）" },
     ]},
     { title: "提示词注入防护", fields: [
       { key: "security.inputIsolation", type: "toggle", label: "父会话输入隔离" },
@@ -179,25 +176,21 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     { title: "任务类型识别", fields: [
       { key: "taskType.enabled", type: "toggle", label: "启用任务类型识别" },
       { key: "taskType.replicateKeywords", type: "text", label: "复刻类关键词（逗号分隔）", hint: "默认：复刻,克隆,仿照,参照,重写,二开,还原,重建,照搬。" },
-      { key: "taskType.pathPattern", type: "text", label: "路径信号模式（source→target）" },
+      { key: "taskType.pathPattern", type: "text", label: "路径信号模式（source→target）", hint: "第十二轮接线：该值里除箭头外的字符会并入「源→目标」分隔符集合（内置 → > - 始终生效）。默认 source→target 即只认这三个；改成如 source_to_target 可额外把下划线当作路径分隔信号。" },
       { key: "taskType.intentDetection", type: "toggle", label: "意图识别（现有项目/桌面文件夹）" },
     ]},
     { title: "复刻模式", fields: [
       { key: "replicate.forceInvestigation", type: "toggle", label: "复刻/迁移/重构/二开强制调查" },
       { key: "replicate.depth", type: "select", label: "调查深度", options: ["light", "standard", "deep"], hint: "复刻类默认 deep。" },
-      { key: "replicate.sourceReadonly", type: "toggle", label: "源目录只读", hint: "调查员只读盘点源项目，不修改源项目。" },
+      { key: "replicate.sourceReadonly", type: "toggle", label: "源目录只读", hint: "第十二轮接线：开启（默认）时，复刻/迁移类目标会向每个角色注入「源目录只读」约束，并检测产物中「要写入源目录」的表述（命中记 P2 问题）。属软强制——编排器只能看文本，无法系统级拦截子 Agent 的文件操作。" },
       { key: "replicate.skipAllowed", type: "toggle", label: "允许跳过调查（复刻类默认禁止）" },
     ]},
     { title: "调查自动触发", fields: [
-      { key: "discoveryTrigger.enabled", type: "toggle", label: "启用自动触发评估" },
-      { key: "discoveryTrigger.mode", type: "select", label: "触发模式", options: ["force", "auto", "skip"] },
-      { key: "discoveryTrigger.threshold", type: "number", label: "自动触发阈值（≥10 强制 deep）", min: 1, max: 20, hint: "默认 6：≥10 强制 deep；6–9 standard；3–5 light；<3 跳过。" },
-      { key: "discoveryTrigger.depthMapping", type: "text", label: "深度映射（light/standard/deep）" },
-      { key: "discoveryTrigger.domainDefault", type: "text", label: "领域默认策略" },
-      { key: "discoveryTrigger.userOverride", type: "toggle", label: "允许用户显式覆盖" },
-      { key: "discoveryTrigger.recordSkip", type: "toggle", label: "跳过记录" },
-      { key: "discoveryTrigger.maxLoops", type: "number", label: "最大回环", min: 1, max: 5 },
-      { key: "discoveryTrigger.escalation", type: "text", label: "超限升级策略" },
+      { key: "discoveryTrigger.enabled", type: "toggle", label: "启用自动触发评估（关闭后评分判定的 auto 决策不再调查；领域强制/复刻强制保留）" },
+      { key: "discoveryTrigger.mode", type: "select", label: "触发模式（auto=按评分；force=一律深度调查；skip=一律跳过）", options: ["force", "auto", "skip"] },
+      { key: "discoveryTrigger.threshold", type: "number", label: "自动触发阈值（评分 ≥ 该值判为需调查；默认 6）", min: 1, max: 10 },
+      { key: "discoveryTrigger.recordSkip", type: "toggle", label: "跳过调查时写留痕" },
+      { key: "discoveryTrigger.escalation", type: "text", label: "超限升级策略（文案写入留痕；含「通知」时同时通知父会话）" },
     ]},
     { title: "调查评分权重", fields: [
       { key: "discoveryWeights.goal", type: "number", label: "目标模糊度（0-3）", min: 0, max: 5 },
@@ -212,8 +205,8 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     ]},
     { title: "调查员", fields: [
       { key: "discovery.enabled", type: "toggle", label: "启用调查员" },
-      { key: "discovery.depth", type: "select", label: "调查深度", options: ["light", "standard", "deep"] },
-      { key: "discovery.evidenceSources", type: "text", label: "证据源" },
+      { key: "discovery.depth", type: "select", label: "调查深度", options: ["auto", "light", "standard", "deep"], hint: "第十二轮接线：auto（默认）= 沿用评分/领域规则推导出的深度（零行为变更）；选 light/standard/deep 则显式覆盖，且覆盖在全部决策推导之后生效（含 discoveryTrigger.mode=force）。" },
+      { key: "discovery.evidenceSources", type: "text", label: "证据源", hint: "第十二轮接线：写入调查任务第 5 项的「可用来源要求」。默认「内置」= 调查员自身的只读工具与现有文档；填其它来源会成为硬要求，该来源不可得时必须显式说明并回落内置能力。" },
       { key: "discovery.skipWhenClear", type: "toggle", label: "目标明确可跳过" },
       { key: "discovery.sufficiencyGate", type: "toggle", label: "调查充分性门禁" },
       { key: "discovery.maxRounds", type: "number", label: "最大回环（3-8 次）", min: 3, max: 8 },
@@ -241,12 +234,7 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
       { key: "qualityGate.blockOnOpenPool", type: "toggle", label: "未关闭问题池阻断最终审核" },
       { key: "qualityGate.p3AutoAccept", type: "toggle", label: "P3 自动接受（限制范围并公示）" },
     ]},
-    { title: "角色包", fields: [
-      { key: "rolePack.enabled", type: "toggle", label: "领域角色包启用" },
-      { key: "rolePack.domain", type: "text", label: "默认领域角色包" },
-      { key: "rolePack.persona", type: "text", label: "角色 System Prompt 来源" },
-      { key: "rolePack.modelTier", type: "text", label: "模型分级" },
-    ]},
+    // 第十一轮 K-15：原「角色包」设置组已删除（rolePack.* 在代码中零消费者）。
     { title: "最终全功能回归", fields: [
       { key: "finalRegression.enabled", type: "toggle", label: "启用最终全功能回归" },
       { key: "finalRegression.environment", type: "text", label: "回归环境" },
@@ -260,12 +248,8 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
       { key: "deployEnv.adapter", type: "select", label: "环境适配器", options: ["local_process", "container", "remote", "simulated"] },
       { key: "deployEnv.adapters", type: "text", label: "可用适配器列表（逗号分隔）" },
     ]},
-    { title: "最终审核三态", fields: [
-      { key: "finalReview.threeState", type: "toggle", label: "三态结论（合格/有条件合格/不合格）" },
-      { key: "finalReview.p2UserConfirm", type: "toggle", label: "P2 风险接受需用户确认" },
-      { key: "finalReview.p3LimitedScope", type: "toggle", label: "P3 限制范围并公示" },
-      { key: "finalReview.dualPersonClassification", type: "toggle", label: "问题分级双人复核" },
-      { key: "finalReview.independentVerification", type: "toggle", label: "独立复验写入快照" },
+    { title: "最终审核（P3 处置）", fields: [
+      { key: "finalReview.p3LimitedScope", type: "toggle", label: "P3 限制范围并公示（关闭＝只记录不自动接受）" },
     ]},
     { title: "最终审核（源基线对比/调查报告/差异清单/调查闭环/设计闭环/回归/复验 7 项检查）", fields: [
       { key: "finalAudit.baselineCompare", type: "toggle", label: "源基线对比（复刻类对照源项目基线）" },
@@ -319,7 +303,7 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     concurrency: { maxConcurrent: 5, queueStrategy: "fifo", queueTimeoutMs: 600000, priorityEnabled: true, keyPathReserve: true, reservedSeats: 1, rps: 8, burst: 100, platformCap: 5, rpm: 240, backoffMs: 3000, degradeThreshold: 3, degradeStrategy: "progressive", globalPauseOn429: true },
     watchdog: { enabled: true, intervalMs: 240000, similarityThreshold: 0.85, repeatRounds: 6, maxRetries429: 3, backoffMs: 3000, freezeQueueOn429: true, zombieIdleMs: 300000, action: "pause" },
     moduleSplit: { enabled: true, parsePrompt: "", mergePrompt: "", aggregateThreshold: 8, cacheEnabled: true, reuseTemplates: true },
-    flow: { manualConfirm: { requirement: true, architecture: false, ui: false, final: false }, autoConfirm: false, confirmTimeoutMs: 300000, maxRework: 3, requirementChangePolicy: "routeBack", summaryTokenCap: 4000, devTimeoutMs: 1800000, taskTimeoutMs: 300000, conditionalTimeoutMs: 300000, gateWaitMs: 300000, manualConfirmDefaults: { requirement: true, architecture: false, ui: false, final: false } },
+    flow: { manualConfirm: { requirement: true, architecture: false, ui: false, final: false }, autoConfirm: false, confirmTimeoutMs: 300000, maxRework: 3, requirementChangePolicy: "routeBack", summaryTokenCap: 4000, devTimeoutMs: 1800000, taskTimeoutMs: 300000, conditionalTimeoutMs: 300000, gateWaitMs: 300000, stageReuse: true, manualConfirmDefaults: { requirement: true, architecture: false, ui: false, final: false } },
     modelGuard: { enabled: true, hangingUpstreams: ["280b", "dots3-note-prev", "note3-prev"], fallbackProvider: "freehub-deepseek-v4-flash-glm5-2-3", fallbackModel: "glm-5.2" },
     models: Object.fromEntries(ALL_ROLES_KEYS.map(([key]) => [key, { provider: DEFAULT_ROLE_MODEL.provider, model: DEFAULT_ROLE_MODEL.model }])),
     roles: {
@@ -340,26 +324,25 @@ window.__ModuleLoader__.load({ id: "dsh-leng-team", factory: (require) => {
     conditional: { enabled: true, threeWaySignoff: true, divergencePolicy: "recordDissent", timeoutPolicy: "defaultDisable", trail: true, finalAuditCheck: true },
     rollback: { totalBudget: 10, perNodeBudget: 5, perEdgeBudget: 3, windowSizeMs: 1800000, escalationThreshold: 8 },
     verification: { enabled: true, rounds: 3, samples: 3, mirror: true, mirrorBudgetRatio: 0.1, conditionalConfirm: true, blind: true, counter: true, evidenceIndependent: true, externalBaseline: true },
-    roleBoundary: { forceNonResponsibilities: true, crossRoleReport: true, conflictEscalation: true },
+    roleBoundary: { forceNonResponsibilities: true, crossRoleReport: true },
     cacheKey: { includeConditionalVersions: true, strictVersionCheck: true, recordHit: true, recordMiss: true },
     taskType: { enabled: true, replicateKeywords: "复刻,克隆,仿照,参照,重写,二开,还原,重建,照搬", pathPattern: "source→target", intentDetection: true },
     replicate: { forceInvestigation: true, depth: "deep", sourceReadonly: true, skipAllowed: false },
-    discovery: { enabled: true, depth: "standard", evidenceSources: "内置", skipWhenClear: true, sufficiencyGate: true, maxRounds: 5 },
-    discoveryTrigger: { enabled: true, mode: "auto", threshold: 6, depthMapping: "light/standard/deep", domainDefault: "领域默认", userOverride: true, recordSkip: true, maxLoops: 2, escalation: "人工裁决" },
+    discovery: { enabled: true, depth: "auto", evidenceSources: "内置", skipWhenClear: true, sufficiencyGate: true, maxRounds: 5 }, // 第十二轮：depth 默认改 "auto" = 不覆盖决策推导
+    discoveryTrigger: { enabled: true, mode: "auto", threshold: 6, recordSkip: true, escalation: "人工裁决" },
     discoveryWeights: { goal: 3, requirement: 3, tech: 3, data: 3, risk: 3, compliance: 3, scale: 2, existing: -2, time: -1 },
     discoveryArtifacts: { schema: "内置", index: true, summary: true, evidenceChain: true, version: "1.0.0" },
     designClosure: { crossReview: true, gate: true, contractFreeze: true, designTest: true, maxRounds: 3 },
     roleEnable: Object.fromEntries(CONDITIONAL_KEYS.map(([key]) => [key, true])),
     qualityGate: { problemLevels: "P0-P3", maxLoops: 3, forceReviewExecution: true, riskAcceptance: "P0/P1禁止", blockOnOpenPool: true, p3AutoAccept: true },
-    rolePack: { enabled: true, domain: "software", persona: "内置", modelTier: "high/mid/low" },
     finalRegression: { enabled: true, environment: "准生产", coverage: "全部功能+设计+性能+安全+无障碍+i18n", replicaCompare: true, blockIfFail: true, tiers: "core,conditional,optional", timeBudgetMs: 1800000 },
     deployEnv: { adapter: "local_process", adapters: ["local_process", "container", "remote", "simulated"] },
-    finalReview: { threeState: true, p2UserConfirm: true, p3LimitedScope: true, dualPersonClassification: true, independentVerification: true },
+    finalReview: { p3LimitedScope: true },
     finalAudit: { baselineCompare: true, artifactReportCheck: true, diffListCheck: true, investigationClosureCheck: true, designClosureCheck: true, finalRegressionCheck: true, verificationCheck: true },
     domainTemplate: { default: "software", selectable: "全部", autoDetect: true, version: "1.0.0", autoConfirmTimeout: "超时不启动" },
     acceptance: { p0p1BlockRate: 100, p2RecordRate: 100, p2CloseConfirmRate: 100, p3TraceRate: 100, rollbackVersionRate: 100, staleRate: 100, riskAcceptRate: 100, signoffRate: 100, finalAuditRate: 100, independentVerificationRate: 100, rollbackBudgetRate: 100, cacheKeyRate: 100, roleBoundaryRate: 100 },
     observability: { enabled: true, panelEnabled: true, refreshMs: 5000, show: ["dag", "queue", "seats", "token", "watchdog", "anomaly", "rework", "handover", "rollback", "signoff", "verification", "rate", "discovery", "gate", "design", "performance", "security_test", "release", "sre", "ci_cd", "accessibility", "i18n", "cache_miss"], exportJson: true },
-    cost: { summaryIndex: true, moduleCache: true, reuseModules: true, tieredModels: true },
+    cost: { reuseModules: true },
     security: { inputIsolation: true, blockPrivilege: true, blockSensitive: true, appendGuard: true },
     version: { personaVersion: "1.0.0", rollbackEnabled: true, abTestEnabled: false },
   };

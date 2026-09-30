@@ -20,16 +20,22 @@ const RESTART = process.argv.includes("--restart");
 const srcDir = ROOT;
 const dstDir = process.env.DSH_LENG_TEAM_DST || "C:/Users/Administrator/.dsh/profiles/web/node_modules/dsh-leng-team";
 
+// 第十二轮 K-18：同步清单不再手写。此前 SYNC_FILES 是硬编码数组，
+// 新增 lib/stage-reuse.js 后 sync-web 仍报 "ALL SYNCED (0 diff)"，但副本里根本没有该文件，
+// 安装副本 import 直接 ERR_MODULE_NOT_FOUND（假绿比报错更危险）。
+// 现在：根文件白名单 + lib/client 目录下 *.js 全量自动发现 + 双向完整性校验。
+const ROOT_FILES = ["package.json", "cordis.patch.yml", "README.md"];
+function discoverFiles(sub, ext) {
+  const abs = path.join(srcDir, sub);
+  if (!fs.existsSync(abs)) return [];
+  return fs.readdirSync(abs, { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith(ext))
+    .map((e) => `${sub}/${e.name}`);
+}
 const SYNC_FILES = [
-  "package.json",
-  "cordis.patch.yml",
-  "README.md",
-  "lib/index.js", "lib/tools.js", "lib/commands.js", "lib/orchestrator.js",
-  "lib/roles.js", "lib/config.js", "lib/discovery.js", "lib/domain-templates.js",
-  "lib/conditional.js", "lib/issues.js", "lib/rollback-budget.js", "lib/verification.js",
-  "lib/watchdog.js", "lib/rate-limiter.js", "lib/module-splitter.js", "lib/observability.js",
-  "lib/snapshot.js", "lib/similarity.js", "lib/settings-section.js",
-  "client/client.js",
+  ...ROOT_FILES.filter((f) => fs.existsSync(path.join(srcDir, f))),
+  ...discoverFiles("lib", ".js"),
+  ...discoverFiles("client", ".js"),
 ];
 const sha = (p) => crypto.createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 const utf8 = { encoding: "utf8" };
@@ -61,7 +67,7 @@ for (const rel of SYNC_FILES) {
 }
 
 // 3) SHA256 校验
-console.log("\n--- 3/4 SHA256 校验 ---");
+console.log("\n--- 3/4 SHA256 校验 + 发布面完整性 ---");
 let diff = 0;
 for (const rel of SYNC_FILES) {
   const sp = path.join(srcDir, rel);
@@ -69,6 +75,17 @@ for (const rel of SYNC_FILES) {
   if (!fs.existsSync(sp)) continue;
   if (!fs.existsSync(dp) || sha(sp) !== sha(dp)) { console.log(`  DIFF ${rel}`); diff++; }
 }
+// 3b) K-18 双向完整性：副本 lib/*.js 缺一个都算失败（曾经的假绿），多一个则告警提示陈旧残留。
+for (const sub of ["lib", "client"]) {
+  const srcSet = new Set(discoverFiles(sub, ".js").map((f) => path.basename(f)));
+  const dstAbs = path.join(dstDir, sub);
+  const dstSet = fs.existsSync(dstAbs)
+    ? new Set(fs.readdirSync(dstAbs, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith(".js")).map((e) => e.name))
+    : new Set();
+  for (const f of srcSet) if (!dstSet.has(f)) { console.log(`  MISSING ${sub}/${f}（副本缺失，插件会在 import 时崩溃）`); diff++; }
+  for (const f of dstSet) if (!srcSet.has(f)) console.log(`  WARN 副本多余 ${sub}/${f}（源码已不存在，建议删除以消除误导）`);
+}
+console.log(`  同步清单=${SYNC_FILES.length} 个文件（自动发现 lib/*.js、client/*.js）`);
 console.log(diff === 0 ? "  ALL SYNCED (0 diff)" : `  ${diff} 个文件不一致!`);
 if (diff > 0) process.exit(1);
 
