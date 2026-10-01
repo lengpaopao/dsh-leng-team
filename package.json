@@ -33,7 +33,8 @@
   "scripts": {
     "check:dual": "node scripts/check-dual-sync.mjs && node scripts/check-declarations.mjs",
     "check:declarations": "node scripts/check-declarations.mjs",
-    "sync-web": "node scripts/sync-web.mjs"
+    "sync-web": "node scripts/sync-web.mjs",
+    "bump": "node scripts/bump-version.mjs"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
