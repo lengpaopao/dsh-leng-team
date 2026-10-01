@@ -1,7 +1,7 @@
 {
   "name": "dsh-leng-team",
-  "version": "2026.9.29",
-  "release": "V2026100101",
+  "version": "26.10.1",
+  "release": "V26.10.1",
   "description": "dsh-leng-team V9.3 专家团队插件：总指挥 + 14 核心角色 + 21 条件角色，任务类型识别、调查员与充分性门禁、条件启用三方会签、设计闭环、全局 5 并发席位池（1-5 可配）、令牌桶/429 状态机、4 分钟语义看门狗、全局回退预算、独立复验、可量化验收、事务快照、专家设置页。由 /team 或 /dsh-leng-team 触发。",
   "type": "module",
   "main": "lib/index.js",
